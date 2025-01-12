@@ -43,8 +43,8 @@
         "temperature": 0.7,
         "prompt_templates": {
             "system": "You are an AI playing Minecraft. Your goal is to survive and thrive in the game world. You must manage health, hunger, and resources while avoiding dangers.",
-            "task_planning": "Given the current game state:\n{game_state}\n\nAnd available resources:\n{resources}\n\nWhat should be the next immediate action to accomplish: {objective}?\n\nRespond with specific actions in this format:\n{\"type\": \"movement\"|\"action\", \"key\": \"forward\"|\"backward\"|\"left\"|\"right\"|\"jump\"|\"mouse1\"|\"mouse2\", \"duration\": number}",
-            "action_selection": "Based on the current situation:\n{situation}\n\nSelect the most appropriate action from:\n{available_actions}\n\nConsider priorities: {priorities}\n\nRespond with ONE specific action in this format:\n{\"type\": \"movement\"|\"action\", \"key\": \"forward\"|\"backward\"|\"left\"|\"right\"|\"jump\"|\"mouse1\"|\"mouse2\", \"duration\": number}",
+            "task_planning": "Given the current game state:\n{game_state}\n\nAnd available resources:\n{resources}\n\nWhat should be the next immediate action to accomplish: {objective}?\n\nRespond with specific actions in this format:\n{\"type\": \"movement\"|\"action\", \"key\": \"forward\"|\"backward\"|\"left\"|\"right\"|\"space\"|\"mouse1\"|\"mouse2\", \"duration\": number}",
+            "action_selection": "Based on the current situation:\n{situation}\n\nSelect the most appropriate action from:\n{available_actions}\n\nConsider priorities: {priorities}\n\nRespond with ONE specific action in this format:\n{\"type\": \"movement\"|\"action\", \"key\": \"forward\"|\"backward\"|\"left\"|\"right\"|\"space\"|\"mouse1\"|\"mouse2\", \"duration\": number}",
             "combat_decision": "Hostile mob detected: {mob_type}\nPlayer state: {player_state}\n\nDecide whether to engage or retreat, considering equipment and surroundings.",
             "crafting_logic": "With these materials:\n{materials}\n\nWhat should be crafted next to achieve:\n{goal}\n\nConsider current tools and priorities."
         }

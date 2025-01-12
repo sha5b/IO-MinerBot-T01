@@ -328,13 +328,15 @@ Environment: {game_state.get('environment', {})}
                 return False
             
             # Key validation for movement
-            if action['type'] == 'movement' and action['key'] not in ['w', 'a', 's', 'd', 'space', 'shift']:
-                self.logger.warning(f"Invalid movement key: {action['key']}")
+            valid_movement_keys = ['forward', 'backward', 'left', 'right', 'space', 'shift']
+            if action['type'] == 'movement' and action['key'] not in valid_movement_keys:
+                self.logger.warning(f"Invalid movement key: {action['key']}. Must be one of: {valid_movement_keys}")
                 return False
             
             # Key validation for actions
-            if action['type'] == 'action' and action['key'] not in ['mouse1', 'mouse2']:
-                self.logger.warning(f"Invalid action key: {action['key']}")
+            valid_action_keys = ['mouse1', 'mouse2']
+            if action['type'] == 'action' and action['key'] not in valid_action_keys:
+                self.logger.warning(f"Invalid action key: {action['key']}. Must be one of: {valid_action_keys}")
                 return False
             
             # Duration validation
@@ -353,13 +355,13 @@ Environment: {game_state.get('environment', {})}
             # Movement mappings
             if any(move in line for move in ['walk', 'move', 'go']):
                 if 'forward' in line:
-                    return {'type': 'movement', 'key': 'w', 'duration': 1.0}
+                    return {'type': 'movement', 'key': 'forward', 'duration': 1.0}
                 elif 'back' in line:
-                    return {'type': 'movement', 'key': 's', 'duration': 1.0}
+                    return {'type': 'movement', 'key': 'backward', 'duration': 1.0}
                 elif 'left' in line:
-                    return {'type': 'movement', 'key': 'a', 'duration': 1.0}
+                    return {'type': 'movement', 'key': 'left', 'duration': 1.0}
                 elif 'right' in line:
-                    return {'type': 'movement', 'key': 'd', 'duration': 1.0}
+                    return {'type': 'movement', 'key': 'right', 'duration': 1.0}
             
             # Action mappings
             if 'break' in line or 'mine' in line:
