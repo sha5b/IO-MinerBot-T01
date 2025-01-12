@@ -1,0 +1,199 @@
+{
+    "games": {
+        "minecraft": {
+            "keyboard": {
+                "movement": {
+                    "forward": "w",
+                    "backward": "s",
+                    "left": "a",
+                    "right": "d",
+                    "jump": "space",
+                    "sneak": "shift",
+                    "sprint": "ctrl"
+                },
+                "actions": {
+                    "break_block": "mouse1",
+                    "place_block": "mouse2",
+                    "pick_block": "mouse3",
+                    "drop_item": "q",
+                    "drop_stack": ["ctrl", "q"],
+                    "inventory": "e",
+                    "crafting": ["e", "shift"]
+                },
+                "hotbar": {
+                    "slot_1": "1",
+                    "slot_2": "2",
+                    "slot_3": "3",
+                    "slot_4": "4",
+                    "slot_5": "5",
+                    "slot_6": "6",
+                    "slot_7": "7",
+                    "slot_8": "8",
+                    "slot_9": "9"
+                },
+                "menu": {
+                    "pause": "esc",
+                    "chat": "t",
+                    "command": "/",
+                    "player_list": "tab"
+                }
+            },
+            "mouse": {
+                "sensitivity": 0.5,
+                "invert_y": false,
+                "dead_zone": 0.05
+            },
+            "combinations": {
+                "screenshot": ["f2"],
+                "perspective": ["f5"],
+                "debug": ["f3"],
+                "fullscreen": ["f11"],
+                "swap_hands": ["f"]
+            }
+        },
+        "default": {
+            "keyboard": {
+                "movement": {
+                    "forward": "w",
+                    "backward": "s",
+                    "left": "a",
+                    "right": "d",
+                    "jump": "space",
+                    "crouch": "ctrl"
+                },
+                "actions": {
+                    "primary": "mouse1",
+                    "secondary": "mouse2",
+                    "interact": "e",
+                    "reload": "r"
+                },
+                "menu": {
+                    "pause": "esc",
+                    "inventory": "tab",
+                    "map": "m"
+                }
+            },
+            "mouse": {
+                "sensitivity": 1.0,
+                "invert_y": false,
+                "dead_zone": 0.1
+            }
+        },
+        "fps_template": {
+            "keyboard": {
+                "movement": {
+                    "forward": "w",
+                    "backward": "s",
+                    "left": "a",
+                    "right": "d",
+                    "jump": "space",
+                    "crouch": "ctrl",
+                    "sprint": "shift"
+                },
+                "actions": {
+                    "shoot": "mouse1",
+                    "aim": "mouse2",
+                    "reload": "r",
+                    "melee": "v",
+                    "use": "e",
+                    "grenade": "g"
+                },
+                "weapons": {
+                    "primary": "1",
+                    "secondary": "2",
+                    "melee": "3",
+                    "special": "4"
+                },
+                "menu": {
+                    "pause": "esc",
+                    "scoreboard": "tab",
+                    "map": "m"
+                }
+            },
+            "mouse": {
+                "sensitivity": 1.0,
+                "invert_y": false,
+                "dead_zone": 0.05,
+                "aim_sensitivity": 0.5
+            }
+        },
+        "moba_template": {
+            "keyboard": {
+                "movement": {
+                    "up": "w",
+                    "down": "s",
+                    "left": "a",
+                    "right": "d"
+                },
+                "abilities": {
+                    "ability1": "q",
+                    "ability2": "w",
+                    "ability3": "e",
+                    "ultimate": "r",
+                    "summoner1": "d",
+                    "summoner2": "f"
+                },
+                "items": {
+                    "item1": "1",
+                    "item2": "2",
+                    "item3": "3",
+                    "item4": "4",
+                    "item5": "5",
+                    "item6": "6"
+                },
+                "menu": {
+                    "shop": "p",
+                    "scoreboard": "tab",
+                    "map": "m"
+                }
+            },
+            "mouse": {
+                "move": "mouse2",
+                "target": "mouse1",
+                "attack_move": "a",
+                "sensitivity": 1.0,
+                "edge_pan": true,
+                "edge_pan_speed": 1.0
+            }
+        }
+    },
+    "action_types": {
+        "movement": {
+            "description": "Basic movement controls",
+            "continuous": true,
+            "default_duration": 0.1
+        },
+        "action": {
+            "description": "Immediate actions like shooting or interacting",
+            "continuous": false,
+            "default_duration": 0.1
+        },
+        "hold": {
+            "description": "Actions that need to be held down",
+            "continuous": true,
+            "default_duration": 1.0
+        },
+        "toggle": {
+            "description": "Actions that toggle states",
+            "continuous": false,
+            "default_duration": 0.1
+        },
+        "combination": {
+            "description": "Multiple keys pressed in sequence or together",
+            "continuous": false,
+            "default_duration": 0.2
+        }
+    },
+    "input_devices": {
+        "keyboard": {
+            "type": "digital",
+            "repeat_delay": 0.5,
+            "repeat_rate": 0.05
+        },
+        "mouse": {
+            "type": "analog",
+            "polling_rate": 1000,
+            "acceleration": false
+        }
+    }
+}

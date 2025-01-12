@@ -1,0 +1,11 @@
+torch
+torchvision
+torchaudio
+opencv-python
+ultralytics
+mss
+pynput
+ollama
+pywin32
+requests
+numpy

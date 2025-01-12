@@ -1,0 +1,91 @@
+{
+    "objectives": {
+        "primary": [
+            "get_wood",
+            "make_basic_tools",
+            "find_food",
+            "build_shelter",
+            "mine_resources"
+        ],
+        "secondary": [
+            "craft_better_equipment",
+            "farm_food",
+            "explore_caves",
+            "collect_rare_resources"
+        ]
+    },
+    "priorities": {
+        "health": 100,
+        "hunger": 90,
+        "shelter": 80,
+        "tools": 70,
+        "resources": 60,
+        "exploration": 50
+    },
+    "constraints": {
+        "min_health": 7,
+        "min_hunger": 6,
+        "min_tools_durability": 20,
+        "safe_distance_mobs": 10,
+        "inventory_slots": 36
+    },
+    "behaviors": {
+        "survival": {
+            "day_activities": [
+                "gather_wood",
+                "mine_stone",
+                "collect_food",
+                "explore_surroundings"
+            ],
+            "night_activities": [
+                "stay_in_shelter",
+                "organize_inventory",
+                "craft_items",
+                "cook_food"
+            ]
+        },
+        "crafting": {
+            "basic_tools": [
+                "wooden_pickaxe",
+                "wooden_axe",
+                "wooden_sword",
+                "crafting_table"
+            ],
+            "essential_items": [
+                "furnace",
+                "chest",
+                "bed",
+                "torch"
+            ]
+        },
+        "resource_gathering": {
+            "initial_resources": [
+                "wood_logs",
+                "cobblestone",
+                "coal",
+                "iron_ore"
+            ],
+            "food_sources": [
+                "animals",
+                "crops",
+                "fish"
+            ]
+        },
+        "combat": {
+            "hostile_mobs": [
+                "zombie",
+                "skeleton",
+                "spider",
+                "creeper"
+            ],
+            "passive_mobs": [
+                "cow",
+                "pig",
+                "sheep",
+                "chicken"
+            ],
+            "min_retreat_health": 5,
+            "safe_distance": 16
+        }
+    }
+}

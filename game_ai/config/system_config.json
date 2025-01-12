@@ -1,0 +1,82 @@
+{
+    "vision": {
+        "monitor": 1,
+        "confidence_threshold": 0.5,
+        "capture_fps": 30,
+        "yolo": {
+            "model_path": "models/yolov8n.pt",
+            "confidence": 0.25,
+            "iou": 0.45,
+            "hide_labels": true,
+            "hide_conf": true,
+            "verbose": false
+        },
+        "object_classes": [
+            "tree",
+            "stone",
+            "water",
+            "grass",
+            "zombie",
+            "skeleton",
+            "creeper",
+            "cow",
+            "pig",
+            "sheep"
+        ]
+    },
+    "memory": {
+        "short_term_limit": 100,
+        "long_term_limit": 1000,
+        "cleanup_interval": 3600,
+        "state_tracking": {
+            "inventory": true,
+            "health": true,
+            "hunger": true,
+            "position": true,
+            "time_of_day": true
+        }
+    },
+    "ollama": {
+        "model": "llama2",
+        "host": "http://localhost:11434",
+        "context_window": 4096,
+        "temperature": 0.7,
+        "prompt_templates": {
+            "system": "You are an AI playing Minecraft. Your goal is to survive and thrive in the game world. You must manage health, hunger, and resources while avoiding dangers.",
+            "task_planning": "Given the current game state:\n{game_state}\n\nAnd available resources:\n{resources}\n\nWhat should be the next immediate action to accomplish: {objective}?\n\nRespond with specific actions in this format:\n{\"type\": \"movement\"|\"action\", \"key\": \"forward\"|\"backward\"|\"left\"|\"right\"|\"jump\"|\"mouse1\"|\"mouse2\", \"duration\": number}",
+            "action_selection": "Based on the current situation:\n{situation}\n\nSelect the most appropriate action from:\n{available_actions}\n\nConsider priorities: {priorities}\n\nRespond with ONE specific action in this format:\n{\"type\": \"movement\"|\"action\", \"key\": \"forward\"|\"backward\"|\"left\"|\"right\"|\"jump\"|\"mouse1\"|\"mouse2\", \"duration\": number}",
+            "combat_decision": "Hostile mob detected: {mob_type}\nPlayer state: {player_state}\n\nDecide whether to engage or retreat, considering equipment and surroundings.",
+            "crafting_logic": "With these materials:\n{materials}\n\nWhat should be crafted next to achieve:\n{goal}\n\nConsider current tools and priorities."
+        }
+    },
+    "controls": {
+        "input_delay": 0.05,
+        "action_timeout": 5.0,
+        "action_cooldown": {
+            "break_block": 0.25,
+            "place_block": 0.25,
+            "attack": 0.6,
+            "jump": 0.1
+        }
+    },
+    "logging": {
+        "console": {
+            "level": "INFO",
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        },
+        "file": {
+            "level": "DEBUG",
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "filename": "logs/game_ai.log",
+            "max_bytes": 10485760,
+            "backup_count": 5
+        },
+        "components": {
+            "vision": "INFO",
+            "memory": "INFO",
+            "decision": "INFO",
+            "action": "INFO",
+            "ollama": "INFO"
+        }
+    }
+}

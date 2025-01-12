@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+
+# Project-specific
+memory/current_state/*
+memory/short_term/*
+memory/long_term/*
+!memory/current_state/.gitkeep
+!memory/short_term/.gitkeep
+!memory/long_term/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Models and weights
+models/*.pt
+*.weights
+
+# Environment variables
+.env
+
+# System-specific
+.DS_Store
+Thumbs.db
