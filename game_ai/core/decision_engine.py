@@ -19,6 +19,7 @@ class DecisionEngine:
         self.ollama = ollama_interface
         self.game_rules = self._load_game_rules()
         self.control_maps = self._load_control_maps()
+        self.game_type = "minecraft"  # Default to minecraft controls
         
     def _load_game_rules(self) -> Dict[str, Any]:
         """Load game rules configuration."""
@@ -59,10 +60,24 @@ class DecisionEngine:
                 environment_data = {
                     'terrain_type': 'unknown',
                     'terrain_analysis': {},
-                    'threats': [],
-                    'resources': [],
-                    'passive_mobs': []
+                    'threats': self.game_rules.get('behaviors', {}).get('combat', {}).get('hostile_mobs', []),
+                    'resources': self.game_rules.get('behaviors', {}).get('resource_gathering', {}).get('initial_resources', []),
+                    'passive_mobs': self.game_rules.get('behaviors', {}).get('combat', {}).get('passive_mobs', [])
                 }
+            
+            # Extract player data from game state
+            player_data = game_state.get('player', {})
+            if not player_data:
+                self.logger.warning("No player data in game state")
+                player_data = {
+                    'health': self.game_rules.get('priorities', {}).get('health', 100),
+                    'status_effects': [],
+                    'equipment': {
+                        'tools': self.game_rules.get('behaviors', {}).get('crafting', {}).get('basic_tools', []),
+                        'items': self.game_rules.get('behaviors', {}).get('crafting', {}).get('essential_items', [])
+                    }
+                }
+                game_state['player'] = player_data
             
             # Analyze current situation
             situation = {
@@ -259,44 +274,54 @@ Current objective: {self._get_current_objective()}
                     }
                 ])
             else:
-                # Exploration pattern with looking around if no resource found
+                # Exploration pattern with looking around and jumping if no resource found
                 basic_actions = [
-                    {
-                        'type': 'look',
-                        'key': 'look_left',
-                        'duration': 0.3
-                    },
-                    {
-                        'type': 'movement',
-                        'key': 'forward',
-                        'duration': 0.5
-                    },
-                    {
-                        'type': 'look',
-                        'key': 'look_right',
-                        'duration': 0.3
-                    },
-                    {
-                        'type': 'movement',
-                        'key': 'right',
-                        'duration': 0.3
-                    },
-                    {
-                        'type': 'look',
-                        'key': 'look_up',
-                        'duration': 0.2
-                    },
-                    {
-                        'type': 'movement',
-                        'key': 'forward',
-                        'duration': 0.5
-                    },
-                    {
-                        'type': 'look',
-                        'key': 'look_down',
-                        'duration': 0.2
-                    }
-                ]
+                {
+                    'type': 'look',
+                    'key': 'look_left',
+                    'duration': 0.3
+                },
+                {
+                    'type': 'movement',
+                    'key': 'forward',
+                    'duration': 0.5
+                },
+                {
+                    'type': 'movement',
+                    'key': 'jump',
+                    'duration': 0.2
+                },
+                {
+                    'type': 'look',
+                    'key': 'look_right',
+                    'duration': 0.3
+                },
+                {
+                    'type': 'movement',
+                    'key': 'right',
+                    'duration': 0.3
+                },
+                {
+                    'type': 'look',
+                    'key': 'look_up',
+                    'duration': 0.2
+                },
+                {
+                    'type': 'movement',
+                    'key': 'forward',
+                    'duration': 0.5
+                },
+                {
+                    'type': 'movement',
+                    'key': 'jump',
+                    'duration': 0.2
+                },
+                {
+                    'type': 'look',
+                    'key': 'look_down',
+                    'duration': 0.2
+                }
+            ]
             
             if self.ollama:
                 # Use LLM for additional tactical planning
@@ -379,7 +404,10 @@ Environment: {game_state.get('environment', {})}
             
             # Key validation based on type
             if action['type'] == 'movement':
-                valid_movement_keys = ['forward', 'backward', 'left', 'right', 'space', 'shift']
+                game_controls = self.control_maps.get('games', {}).get(self.game_type, {})
+                valid_movement_keys = game_controls.get('keyboard', {}).get('movement', {}).keys()
+                if not valid_movement_keys:
+                    valid_movement_keys = self.control_maps.get('games', {}).get('default', {}).get('keyboard', {}).get('movement', {}).keys()
                 if action['key'] not in valid_movement_keys:
                     self.logger.warning(f"Invalid movement key: {action['key']}. Must be one of: {valid_movement_keys}")
                     return False
@@ -435,7 +463,7 @@ Environment: {game_state.get('environment', {})}
             elif 'place' in line:
                 return {'type': 'action', 'key': 'mouse2', 'duration': 0.5}
             elif 'jump' in line:
-                return {'type': 'movement', 'key': 'space', 'duration': 0.5}
+                return {'type': 'movement', 'key': 'jump', 'duration': 0.5}
             
             return None
         except Exception as e:
@@ -660,10 +688,14 @@ Environment: {game_state.get('environment', {})}
     
     def _evaluate_player_status(self, game_state: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate current player status."""
+        player_data = game_state.get('player', {})
         return {
-            'health': game_state.get('player', {}).get('health', 100),
-            'status_effects': game_state.get('player', {}).get('status', []),
-            'equipment': game_state.get('player', {}).get('equipment', {})
+            'health': player_data.get('health', self.game_rules.get('priorities', {}).get('health', 100)),
+            'status_effects': player_data.get('status', []),
+            'equipment': player_data.get('equipment', {
+                'tools': self.game_rules.get('behaviors', {}).get('crafting', {}).get('basic_tools', []),
+                'items': self.game_rules.get('behaviors', {}).get('crafting', {}).get('essential_items', [])
+            })
         }
     
     def _identify_threats(self, game_state: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -677,11 +709,9 @@ Environment: {game_state.get('environment', {})}
     def _evaluate_resources(self, game_state: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate current resource status."""
         inventory = game_state.get('player', {}).get('inventory', {})
+        initial_resources = self.game_rules.get('behaviors', {}).get('resource_gathering', {}).get('initial_resources', [])
         return {
-            'current_resources': inventory.get('items', {}),
-            'capacity': inventory.get('capacity', 100),
-            'low_resources': [
-                item for item, count in inventory.get('items', {}).items()
-                if count < inventory.get('low_thresholds', {}).get(item, 10)
-            ]
+            'current_resources': inventory.get('items', {resource: 0 for resource in initial_resources}),
+            'capacity': inventory.get('capacity', self.game_rules.get('constraints', {}).get('inventory_slots', 36)),
+            'low_resources': initial_resources
         }
