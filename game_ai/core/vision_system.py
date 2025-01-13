@@ -42,10 +42,10 @@ class VisionSystem:
         
         # Color ranges for different elements
         self.color_ranges = {
-            'player': [(0, 100, 100), (10, 255, 255)],  # Red-ish for player character
-            'enemy': [(0, 0, 50), (180, 50, 200)],      # Gray/Dark for hostile mobs
-            'resource': [(20, 100, 100), (40, 255, 255)], # Yellow/Brown for resources like trees
-            'terrain': [(35, 50, 50), (85, 255, 255)]   # Green-ish for terrain/blocks
+            'player': [(0, 100, 100), (10, 255, 255)],  # Red-ish
+            'enemy': [(0, 0, 100), (180, 30, 255)],     # Gray/Dark
+            'resource': [(20, 100, 100), (30, 255, 255)],  # Yellow-ish
+            'terrain': [(35, 50, 50), (85, 255, 255)]   # Green-ish
         }
         
     def _load_config(self, config_path: Optional[Path]) -> Dict[str, Any]:
@@ -140,51 +140,6 @@ class VisionSystem:
             # Analyze scene structure
             structure = self._analyze_scene_structure(gray)
             
-            # Analyze detected objects
-            analysis = {
-                'environment': {
-                    'terrain_type': self._analyze_terrain(objects, structure),
-                    'terrain_analysis': structure,
-                    'threats': [
-                        {
-                            'type': obj['type'],
-                            'position': obj['position'],
-                            'distance': self._calculate_distance(
-                                obj['position'],
-                                next((p['position'] for p in objects if p['type'] == 'player'), (0, 0))
-                            )
-                        }
-                        for obj in objects if obj['type'] == 'enemy'
-                    ],
-                    'resources': [
-                        {
-                            'type': obj['type'],
-                            'position': obj['position'],
-                            'distance': self._calculate_distance(
-                                obj['position'],
-                                next((p['position'] for p in objects if p['type'] == 'player'), (0, 0))
-                            )
-                        }
-                        for obj in objects if obj['type'] == 'resource'
-                    ],
-                    'passive_mobs': [
-                        {
-                            'type': obj['type'],
-                            'position': obj['position'],
-                            'distance': self._calculate_distance(
-                                obj['position'],
-                                next((p['position'] for p in objects if p['type'] == 'player'), (0, 0))
-                            )
-                        }
-                        for obj in objects if obj['type'] not in ['enemy', 'resource', 'player']
-                    ]
-                },
-                'player': {
-                    'position': next((obj['position'] for obj in objects if obj['type'] == 'player'), None),
-                    'status': self._analyze_player_status(objects, motion)
-                }
-            }
-
             # Combine all data
             game_state = {
                 'frame_shape': frame.shape,
@@ -192,8 +147,7 @@ class VisionSystem:
                 'objects': objects,
                 'features': features,
                 'motion': motion,
-                'structure': structure,
-                'analysis': analysis
+                'structure': structure
             }
             
             # Update visualization
@@ -213,53 +167,6 @@ class VisionSystem:
             self.logger.error(f"Frame processing error: {e}")
             raise
     
-    def _analyze_terrain(self, objects: List[Dict[str, Any]], structure: Dict[str, Any]) -> str:
-        """Analyze terrain type based on detected objects and structure."""
-        # Count terrain objects
-        terrain_objects = [obj for obj in objects if obj['type'] == 'terrain']
-        
-        if not terrain_objects:
-            return 'unknown'
-            
-        # Analyze terrain distribution
-        terrain_coverage = sum(obj['area'] for obj in terrain_objects)
-        total_area = structure.get('edge_density', 0) * 100
-        
-        if terrain_coverage > total_area * 0.6:
-            return 'dense'
-        elif terrain_coverage > total_area * 0.3:
-            return 'moderate'
-        else:
-            return 'sparse'
-            
-    def _analyze_player_status(self, objects: List[Dict[str, Any]], motion: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze player status based on detected objects and motion."""
-        player_objects = [obj for obj in objects if obj['type'] == 'player']
-        
-        if not player_objects:
-            return {}
-            
-        # Basic status analysis
-        status = {
-            'moving': motion['magnitude'] > 0.1,
-            'near_resources': any(
-                obj['type'] == 'resource' and 
-                self._calculate_distance(player_objects[0]['position'], obj['position']) < 100
-                for obj in objects
-            ),
-            'near_threats': any(
-                obj['type'] == 'enemy' and
-                self._calculate_distance(player_objects[0]['position'], obj['position']) < 150
-                for obj in objects
-            )
-        }
-        
-        return status
-        
-    def _calculate_distance(self, pos1: Tuple[int, int], pos2: Tuple[int, int]) -> float:
-        """Calculate distance between two points."""
-        return ((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)**0.5
-
     def _detect_objects_by_color(self, hsv: np.ndarray) -> List[Dict[str, Any]]:
         """Detect objects using color ranges."""
         objects = []
