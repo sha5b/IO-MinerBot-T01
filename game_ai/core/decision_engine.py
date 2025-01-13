@@ -206,26 +206,50 @@ Current objective: {self._get_current_objective()}
                 resource_x = nearest_resource['position'][0]
                 center_x = frame_width / 2
                 
-                # Move towards resource
+                # Look and move towards resource
                 if abs(resource_x - center_x) > 50:  # If not centered
                     if resource_x < center_x:
-                        basic_actions.append({
-                            'type': 'movement',
-                            'key': 'left',  # Use control map key name
-                            'duration': 0.5
-                        })
+                        basic_actions.extend([
+                            {
+                                'type': 'look',
+                                'key': 'look_left',
+                                'duration': 0.2
+                            },
+                            {
+                                'type': 'movement',
+                                'key': 'left',
+                                'duration': 0.3
+                            }
+                        ])
                     else:
-                        basic_actions.append({
-                            'type': 'movement',
-                            'key': 'right',  # Use control map key name
-                            'duration': 0.5
-                        })
+                        basic_actions.extend([
+                            {
+                                'type': 'look',
+                                'key': 'look_right',
+                                'duration': 0.2
+                            },
+                            {
+                                'type': 'movement',
+                                'key': 'right',
+                                'duration': 0.3
+                            }
+                        ])
                 
-                # Move forward and interact
+                # Look around, move forward and interact
                 basic_actions.extend([
                     {
+                        'type': 'look',
+                        'key': 'look_up',
+                        'duration': 0.2
+                    },
+                    {
+                        'type': 'look',
+                        'key': 'look_down',
+                        'duration': 0.2
+                    },
+                    {
                         'type': 'movement',
-                        'key': 'forward',  # Use control map key name
+                        'key': 'forward',
                         'duration': 1.0
                     },
                     {
@@ -235,31 +259,56 @@ Current objective: {self._get_current_objective()}
                     }
                 ])
             else:
-                # Exploration pattern if no resource found
+                # Exploration pattern with looking around if no resource found
                 basic_actions = [
                     {
-                        'type': 'movement',
-                        'key': 'forward',  # Use control map key name
-                        'duration': 1.0
+                        'type': 'look',
+                        'key': 'look_left',
+                        'duration': 0.3
                     },
                     {
                         'type': 'movement',
-                        'key': 'right',  # Use control map key name
+                        'key': 'forward',
                         'duration': 0.5
                     },
                     {
+                        'type': 'look',
+                        'key': 'look_right',
+                        'duration': 0.3
+                    },
+                    {
                         'type': 'movement',
-                        'key': 'forward',  # Use control map key name
-                        'duration': 1.0
+                        'key': 'right',
+                        'duration': 0.3
+                    },
+                    {
+                        'type': 'look',
+                        'key': 'look_up',
+                        'duration': 0.2
+                    },
+                    {
+                        'type': 'movement',
+                        'key': 'forward',
+                        'duration': 0.5
+                    },
+                    {
+                        'type': 'look',
+                        'key': 'look_down',
+                        'duration': 0.2
                     }
                 ]
             
             if self.ollama:
                 # Use LLM for additional tactical planning
                 system_prompt = """You are controlling a Minecraft character.
-Available actions: move (WASD), jump (space), break blocks (left click), place blocks (right click).
+Available actions:
+- Movement: move forward/backward/left/right, jump (space)
+- Looking: look left/right/up/down to change view direction
+- Actions: break blocks (left click), place blocks (right click)
+
 What specific actions should be taken to achieve the current objective?
-Respond with simple actions like: 'move forward', 'break block', 'jump', etc."""
+Remember to look around to find resources and navigate. Use natural language like:
+'look left', 'look up', 'move forward', 'break block', 'jump', etc."""
                 
                 situation_str = f"""
 Current objective: {current_objective}
@@ -323,21 +372,27 @@ Environment: {game_state.get('environment', {})}
                 return False
             
             # Type validation
-            if action['type'] not in ['movement', 'action']:
-                self.logger.warning(f"Invalid action type: {action['type']}")
+            valid_types = ['movement', 'action', 'look']
+            if action['type'] not in valid_types:
+                self.logger.warning(f"Invalid action type: {action['type']}. Must be one of: {valid_types}")
                 return False
             
-            # Key validation for movement
-            valid_movement_keys = ['forward', 'backward', 'left', 'right', 'space', 'shift']
-            if action['type'] == 'movement' and action['key'] not in valid_movement_keys:
-                self.logger.warning(f"Invalid movement key: {action['key']}. Must be one of: {valid_movement_keys}")
-                return False
-            
-            # Key validation for actions
-            valid_action_keys = ['mouse1', 'mouse2']
-            if action['type'] == 'action' and action['key'] not in valid_action_keys:
-                self.logger.warning(f"Invalid action key: {action['key']}. Must be one of: {valid_action_keys}")
-                return False
+            # Key validation based on type
+            if action['type'] == 'movement':
+                valid_movement_keys = ['forward', 'backward', 'left', 'right', 'space', 'shift']
+                if action['key'] not in valid_movement_keys:
+                    self.logger.warning(f"Invalid movement key: {action['key']}. Must be one of: {valid_movement_keys}")
+                    return False
+            elif action['type'] == 'action':
+                valid_action_keys = ['mouse1', 'mouse2']
+                if action['key'] not in valid_action_keys:
+                    self.logger.warning(f"Invalid action key: {action['key']}. Must be one of: {valid_action_keys}")
+                    return False
+            elif action['type'] == 'look':
+                valid_look_keys = ['look_left', 'look_right', 'look_up', 'look_down']
+                if action['key'] not in valid_look_keys:
+                    self.logger.warning(f"Invalid look key: {action['key']}. Must be one of: {valid_look_keys}")
+                    return False
             
             # Duration validation
             if not isinstance(action['duration'], (int, float)) or action['duration'] <= 0:
@@ -352,15 +407,26 @@ Environment: {game_state.get('environment', {})}
     def _parse_action_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Parse a single line of text into an action if possible."""
         try:
+            # Look mappings
+            if 'look' in line:
+                if 'left' in line:
+                    return {'type': 'look', 'key': 'look_left', 'duration': 0.2}
+                elif 'right' in line:
+                    return {'type': 'look', 'key': 'look_right', 'duration': 0.2}
+                elif 'up' in line:
+                    return {'type': 'look', 'key': 'look_up', 'duration': 0.2}
+                elif 'down' in line:
+                    return {'type': 'look', 'key': 'look_down', 'duration': 0.2}
+            
             # Movement mappings
             if any(move in line for move in ['walk', 'move', 'go']):
                 if 'forward' in line:
                     return {'type': 'movement', 'key': 'forward', 'duration': 1.0}
                 elif 'back' in line:
                     return {'type': 'movement', 'key': 'backward', 'duration': 1.0}
-                elif 'left' in line:
+                elif 'left' in line and 'look' not in line:  # Avoid conflict with look_left
                     return {'type': 'movement', 'key': 'left', 'duration': 1.0}
-                elif 'right' in line:
+                elif 'right' in line and 'look' not in line:  # Avoid conflict with look_right
                     return {'type': 'movement', 'key': 'right', 'duration': 1.0}
             
             # Action mappings
