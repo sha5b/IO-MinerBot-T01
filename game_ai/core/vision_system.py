@@ -115,15 +115,14 @@ class VisionSystem:
             motion = self.motion_detector.detect_motion(frame)
             structure = self.scene_analyzer.analyze_scene(frame)
             
-            # Combine all data
-            game_state = {
-                'frame_shape': frame.shape,
-                'timestamp': datetime.now().isoformat(),
-                'objects': objects,
-                'features': features,
-                'motion': motion,
-                'structure': structure
-            }
+            # Transform raw data into structured game state
+            game_state = self._transform_game_state(
+                frame.shape,
+                objects,
+                features,
+                motion,
+                structure
+            )
             
             # Update visualization
             if self.visualizer:
@@ -172,6 +171,121 @@ class VisionSystem:
         """
         self.config['capture']['monitor'] = monitor_num
             
+    def _transform_game_state(self, frame_shape: tuple, objects: List[Dict[str, Any]],
+                            features: List[Dict[str, Any]], motion: Dict[str, Any],
+                            structure: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform raw vision data into structured game state.
+        
+        Args:
+            frame_shape: Shape of the frame
+            objects: Detected objects
+            features: Tracked features
+            motion: Motion detection results
+            structure: Scene structure analysis
+            
+        Returns:
+            dict: Structured game state
+        """
+        try:
+            # Extract player information
+            player_objects = [obj for obj in objects if obj.get('class') == 'player']
+            player = {
+                'health': 100,  # Default value, should be updated from UI elements
+                'position': player_objects[0]['position'] if player_objects else (0, 0),
+                'status': []
+            }
+            
+            # Extract threats
+            threats = []
+            for obj in objects:
+                if obj.get('class') in ['zombie', 'skeleton', 'creeper']:
+                    threats.append({
+                        'type': obj['class'],
+                        'distance': self._calculate_distance(player['position'], obj['position']),
+                        'position': obj['position'],
+                        'threat_level': 0.8 if obj['class'] == 'creeper' else 0.6
+                    })
+            
+            # Extract resources and opportunities
+            resources = []
+            opportunities = []
+            for obj in objects:
+                if obj.get('class') in ['tree', 'stone', 'water']:
+                    resources.append({
+                        'type': obj['class'],
+                        'position': obj['position'],
+                        'distance': self._calculate_distance(player['position'], obj['position'])
+                    })
+                    opportunities.append({
+                        'type': f'gather_{obj["class"]}',
+                        'position': obj['position'],
+                        'distance': self._calculate_distance(player['position'], obj['position']),
+                        'value': 0.7
+                    })
+            
+            # Structure environment information
+            environment = {
+                'terrain_type': self._determine_terrain_type(structure),
+                'visibility': 1.0 - motion.get('blur_factor', 0),
+                'threats': threats,
+                'opportunities': opportunities,
+                'obstacles': self._extract_obstacles(structure),
+                'explored_chunks': 1,  # Placeholder
+                'total_chunks': 100    # Placeholder
+            }
+            
+            # Structure inventory information
+            inventory = {
+                'items': {},  # Should be updated from UI elements
+                'capacity': 100,
+                'thresholds': {
+                    'wood': 25,
+                    'stone': 25,
+                    'food': 25
+                }
+            }
+            
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'player': player,
+                'environment': environment,
+                'inventory': inventory
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming game state: {e}")
+            return {
+                'player': {'health': 100, 'position': (0, 0), 'status': []},
+                'environment': {'terrain_type': 'unknown', 'visibility': 1.0},
+                'inventory': {'items': {}, 'capacity': 100}
+            }
+    
+    def _calculate_distance(self, pos1: tuple, pos2: tuple) -> float:
+        """Calculate Euclidean distance between two points."""
+        return float(np.sqrt((pos2[0] - pos1[0])**2 + (pos2[1] - pos1[1])**2))
+    
+    def _determine_terrain_type(self, structure: Dict[str, Any]) -> str:
+        """Determine terrain type from scene structure."""
+        edge_density = structure.get('edge_density', 0)
+        if edge_density > 0.3:
+            return 'difficult'
+        elif edge_density > 0.1:
+            return 'normal'
+        else:
+            return 'easy'
+    
+    def _extract_obstacles(self, structure: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract obstacles from scene structure."""
+        obstacles = []
+        for line in structure.get('lines', []):
+            if line['length'] > 50:  # Only consider significant lines as obstacles
+                obstacles.append({
+                    'position': line['start'],
+                    'size': (line['length'], 10)  # Approximate size
+                })
+        return obstacles
+    
     def cleanup(self) -> None:
         """Clean up resources."""
         try:

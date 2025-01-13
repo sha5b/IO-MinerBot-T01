@@ -102,9 +102,8 @@ class DecisionEngine:
         """
         try:
             # First check for immediate reactions
-            reaction = self.reactive_controller.process_state_changes(
-                self._sanitize_state(game_state)
-            )
+            sanitized_state = self._sanitize_state(game_state)
+            reaction = self.reactive_controller.process_state_changes(sanitized_state)
             if reaction:
                 self.logger.info("Generated reactive response")
                 return {
@@ -113,15 +112,25 @@ class DecisionEngine:
                     'timestamp': datetime.now().isoformat()
                 }
             
-            # Analyze situation
-            situation = self.situation_analyzer.analyze_situation(game_state)
+            # Analyze current situation
+            situation = self.situation_analyzer.analyze_situation(sanitized_state)
             
-            # Develop strategy
+            # Check if current strategy is still valid
+            if self.current_strategy:
+                if self._should_update_strategy(situation):
+                    self.logger.info("Current strategy needs update")
+                else:
+                    return self.current_strategy
+            
+            # Develop new strategy
             strategy = self.strategy_planner.develop_strategy(
-                game_state,
+                sanitized_state,
                 memory,
                 self.ollama
             )
+            
+            # Update objective tracking
+            self._update_objective_tracking(strategy, situation)
             
             self.current_strategy = strategy
             return strategy
@@ -256,12 +265,131 @@ class DecisionEngine:
             'timestamp': datetime.now().isoformat()
         }
     
+    def _should_update_strategy(self, situation: Dict[str, Any]) -> bool:
+        """
+        Determine if current strategy needs updating.
+        
+        Args:
+            situation (dict): Current situation analysis
+            
+        Returns:
+            bool: Whether strategy should be updated
+        """
+        if not self.current_strategy:
+            return True
+            
+        try:
+            # Check if current objectives are still valid
+            current_objectives = self.current_strategy.get('objectives', [])
+            if not current_objectives:
+                return True
+            
+            # Check if highest priority objective is still relevant
+            top_objective = current_objectives[0]
+            obj_type = top_objective.get('type')
+            
+            # Check critical conditions
+            if obj_type == 'survival':
+                health = situation.get('player_status', {}).get('health', {}).get('value', 100)
+                if health < 30:  # Critical health takes precedence
+                    return True
+                    
+            elif obj_type == 'combat':
+                threats = situation.get('threats', [])
+                immediate_threats = [t for t in threats if t.get('distance', float('inf')) < 20]
+                if immediate_threats:  # Immediate threats take precedence
+                    return True
+                    
+            elif obj_type == 'resource':
+                if not situation.get('resources', {}).get('current', {}):
+                    return True  # No resources requires strategy update
+                    
+            # Check if objective completion criteria met
+            if self._is_objective_complete(top_objective, situation):
+                return True
+                
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error checking strategy update: {e}")
+            return True
+    
+    def _update_objective_tracking(self, strategy: Dict[str, Any], 
+                                 situation: Dict[str, Any]) -> None:
+        """
+        Update objective tracking and completion status.
+        
+        Args:
+            strategy (dict): Current strategy
+            situation (dict): Current situation analysis
+        """
+        try:
+            # Update existing objectives
+            for obj in self.objective_manager.get_active_objectives():
+                if self._is_objective_complete(obj, situation):
+                    self.objective_manager.update_objective_status(
+                        obj['id'],
+                        'completed',
+                        'Objective completion criteria met'
+                    )
+            
+            # Add new objectives
+            for obj in strategy.get('objectives', []):
+                if obj not in self.objective_manager.get_active_objectives():
+                    self.objective_manager.create_objective(
+                        obj['type'],
+                        obj['goal'],
+                        obj.get('priority', 'medium'),
+                        obj.get('details', '')
+                    )
+                    
+        except Exception as e:
+            self.logger.error(f"Error updating objective tracking: {e}")
+    
+    def _is_objective_complete(self, objective: Dict[str, Any], 
+                             situation: Dict[str, Any]) -> bool:
+        """
+        Check if objective completion criteria are met.
+        
+        Args:
+            objective (dict): Objective to check
+            situation (dict): Current situation analysis
+            
+        Returns:
+            bool: Whether objective is complete
+        """
+        try:
+            obj_type = objective.get('type')
+            obj_goal = objective.get('goal')
+            
+            if obj_type == 'survival' and obj_goal == 'heal':
+                health = situation.get('player_status', {}).get('health', {}).get('value', 100)
+                return health > 70  # Health restored
+                
+            elif obj_type == 'combat' and obj_goal == 'evade_threat':
+                threats = situation.get('threats', [])
+                return not any(t.get('distance', float('inf')) < 30 for t in threats)
+                
+            elif obj_type == 'resource' and obj_goal == 'gather_basic_resources':
+                resources = situation.get('resources', {}).get('current', {})
+                return bool(resources)  # Basic resources gathered
+                
+            elif obj_type == 'exploration' and obj_goal == 'explore_area':
+                explored = situation.get('environment', {}).get('explored_ratio', 0)
+                return explored > 0.7  # Area sufficiently explored
+                
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error checking objective completion: {e}")
+            return False
+    
     def _get_current_objective(self) -> Optional[Dict[str, Any]]:
         """Get current highest priority objective."""
-        if not self.current_strategy or 'objectives' not in self.current_strategy:
+        active_objectives = self.objective_manager.get_active_objectives()
+        if not active_objectives:
             return None
-        objectives = self.current_strategy['objectives']
-        return objectives[0] if objectives else None
+        return active_objectives[0]  # Objectives are kept sorted by priority
     
     def _sanitize_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Remove non-JSON serializable objects from state."""

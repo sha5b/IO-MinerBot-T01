@@ -22,32 +22,57 @@ class ObjectiveManager:
         self.min_priority = config.get('objectives', {}).get('min_priority', 0.0)
         self.max_priority = config.get('objectives', {}).get('max_priority', 1.0)
         
-        # Objective type definitions
+        # Objective type definitions with specific goals and priorities
         self.objective_types = {
             'survival': {
                 'base_priority': 1.0,
                 'description': 'Basic survival objectives',
-                'goals': ['find_food', 'find_shelter', 'heal']
+                'goals': {
+                    'heal': {'priority': 1.0, 'description': 'Find food or healing items'},
+                    'find_food': {'priority': 0.9, 'description': 'Locate and gather food'},
+                    'find_shelter': {'priority': 0.8, 'description': 'Find or create safe shelter'},
+                    'get_equipment': {'priority': 0.7, 'description': 'Obtain basic equipment'}
+                }
+            },
+            'combat': {
+                'base_priority': 0.9,
+                'description': 'Combat-related objectives',
+                'goals': {
+                    'evade_threat': {'priority': 1.0, 'description': 'Escape from immediate danger'},
+                    'prepare_defense': {'priority': 0.8, 'description': 'Set up defensive position'},
+                    'engage_enemy': {'priority': 0.7, 'description': 'Attack hostile entities'},
+                    'find_weapons': {'priority': 0.8, 'description': 'Obtain combat equipment'}
+                }
+            },
+            'resource': {
+                'base_priority': 0.7,
+                'description': 'Resource gathering objectives',
+                'goals': {
+                    'gather_basic_resources': {'priority': 0.9, 'description': 'Gather wood and stone'},
+                    'gather_resources': {'priority': 0.8, 'description': 'Collect available resources'},
+                    'mine_minerals': {'priority': 0.7, 'description': 'Extract valuable minerals'},
+                    'harvest_crops': {'priority': 0.7, 'description': 'Gather food resources'}
+                }
             },
             'exploration': {
                 'base_priority': 0.6,
                 'description': 'World exploration objectives',
-                'goals': ['explore_area', 'find_resources', 'map_terrain']
-            },
-            'combat': {
-                'base_priority': 0.8,
-                'description': 'Combat-related objectives',
-                'goals': ['engage_enemy', 'evade_threat', 'find_weapons']
+                'goals': {
+                    'explore_area': {'priority': 0.8, 'description': 'Scout surrounding area'},
+                    'find_resources': {'priority': 0.7, 'description': 'Locate resource deposits'},
+                    'map_terrain': {'priority': 0.6, 'description': 'Document surroundings'},
+                    'find_landmarks': {'priority': 0.5, 'description': 'Identify notable locations'}
+                }
             },
             'crafting': {
                 'base_priority': 0.5,
                 'description': 'Item crafting objectives',
-                'goals': ['gather_materials', 'craft_item', 'upgrade_equipment']
-            },
-            'building': {
-                'base_priority': 0.4,
-                'description': 'Construction objectives',
-                'goals': ['build_shelter', 'fortify_position', 'create_storage']
+                'goals': {
+                    'craft_tools': {'priority': 0.8, 'description': 'Create basic tools'},
+                    'craft_weapons': {'priority': 0.7, 'description': 'Create weapons'},
+                    'craft_armor': {'priority': 0.7, 'description': 'Create protective gear'},
+                    'upgrade_equipment': {'priority': 0.6, 'description': 'Improve existing items'}
+                }
             }
         }
         
@@ -171,32 +196,62 @@ class ObjectiveManager:
         
         try:
             obj_type = objective.get('type')
+            obj_goal = objective.get('goal')
             
             # Health-based modifiers
+            health = situation.get('player_status', {}).get('health', {}).get('value', 100)
             if obj_type == 'survival':
-                health = situation.get('player_status', {}).get('health', {}).get('value', 100)
                 if health < 30:
+                    modifiers.append(2.5)  # Critical priority when health is very low
+                elif health < 50:
                     modifiers.append(2.0)  # High priority when health is low
                 elif health < 70:
-                    modifiers.append(1.5)
+                    modifiers.append(1.5)  # Elevated priority when health is moderate
             
             # Threat-based modifiers
+            threats = situation.get('threats', [])
+            immediate_threats = [t for t in threats if t.get('distance', float('inf')) < 20]
             if obj_type == 'combat':
-                threats = situation.get('threats', [])
-                if threats:
-                    modifiers.append(1.5)  # Higher priority when threats present
+                if immediate_threats:
+                    if obj_goal == 'evade_threat':
+                        modifiers.append(3.0)  # Highest priority for evasion
+                    else:
+                        modifiers.append(2.0)  # High priority for other combat goals
+                elif threats:
+                    modifiers.append(1.5)  # Elevated priority when threats exist
             
             # Resource-based modifiers
-            if obj_type in ['crafting', 'building']:
-                resources = situation.get('resources', {}).get('current', {})
+            resources = situation.get('resources', {}).get('current', {})
+            if obj_type == 'resource':
                 if not resources:
-                    modifiers.append(0.5)  # Lower priority when no resources
+                    if obj_goal == 'gather_basic_resources':
+                        modifiers.append(2.0)  # High priority when no resources
+                    else:
+                        modifiers.append(1.5)  # Elevated priority for other resource goals
+                
+                # Check nearby opportunities
+                opportunities = situation.get('environment', {}).get('opportunities', [])
+                nearby_resources = [o for o in opportunities if o.get('distance', float('inf')) < 30]
+                if nearby_resources:
+                    modifiers.append(1.3)  # Bonus for available resources
             
             # Exploration modifiers
             if obj_type == 'exploration':
                 explored = situation.get('environment', {}).get('explored_ratio', 0.5)
                 if explored < 0.3:
-                    modifiers.append(1.2)  # Higher priority in unexplored areas
+                    modifiers.append(1.3)  # Higher priority in unexplored areas
+                
+                # Check visibility
+                visibility = situation.get('environment', {}).get('visibility', 1.0)
+                if visibility < 0.5:
+                    modifiers.append(0.7)  # Lower priority in poor visibility
+            
+            # Crafting modifiers
+            if obj_type == 'crafting':
+                if resources:
+                    modifiers.append(1.2)  # Bonus when resources available
+                if health < 50:
+                    modifiers.append(0.5)  # Lower priority when health is critical
             
         except Exception as e:
             self.logger.error(f"Error getting situational modifiers: {e}")

@@ -62,6 +62,39 @@ class MemoryManager:
             
         return default_config
     
+    def _sanitize_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize state data for storage by converting numpy arrays to lists.
+        
+        Args:
+            state (dict): State to sanitize
+            
+        Returns:
+            dict: Sanitized state
+        """
+        sanitized = {}
+        try:
+            for key, value in state.items():
+                if isinstance(value, (dict, list, str, int, float, bool, type(None))):
+                    if isinstance(value, dict):
+                        sanitized[key] = self._sanitize_state(value)
+                    elif isinstance(value, list):
+                        sanitized[key] = [
+                            self._sanitize_state(item) if isinstance(item, dict) else 
+                            item.tolist() if hasattr(item, 'tolist') else item
+                            for item in value
+                        ]
+                    else:
+                        sanitized[key] = value
+                elif hasattr(value, 'tolist'):  # Handle numpy arrays
+                    sanitized[key] = value.tolist()
+                else:
+                    sanitized[key] = str(value)  # Convert other types to string
+            return sanitized
+        except Exception as e:
+            self.logger.error(f"Error sanitizing state: {e}")
+            return {}
+
     def update_current_state(self, state: Dict[str, Any]) -> None:
         """
         Update the current game state.
@@ -70,11 +103,14 @@ class MemoryManager:
             state (dict): New game state information
         """
         try:
+            # Sanitize state before storage
+            sanitized_state = self._sanitize_state(state)
+            
             # Update state tracker
-            self.state_tracker.update_state(state)
+            self.state_tracker.update_state(sanitized_state)
             
             # Store in short-term memory
-            self.short_term.store_state(state)
+            self.short_term.store_state(sanitized_state)
             
             # Update spatial memory if position available
             if 'position' in state:
@@ -126,7 +162,9 @@ class MemoryManager:
             event_type (str): Type of event
             event_data (dict): Event data
         """
-        self.short_term.store_event(event_type, event_data)
+        # Sanitize event data before storage
+        sanitized_data = self._sanitize_state(event_data)  # Reuse state sanitizer
+        self.short_term.store_event(event_type, sanitized_data)
     
     def get_relevant_memory(self, query: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -213,10 +251,12 @@ class MemoryManager:
     def _handle_memory_overflow(self, buffer_type: str, item: Dict[str, Any]) -> None:
         """Handle memory overflow by moving to long-term storage."""
         try:
+            # Sanitize item before long-term storage
+            sanitized_item = self._sanitize_state(item)
             if buffer_type == 'state':
-                self.long_term.store_memory(item)
+                self.long_term.store_memory(sanitized_item)
             elif buffer_type == 'event':
-                self.long_term.store_memory(item)
+                self.long_term.store_memory(sanitized_item)
         except Exception as e:
             self.logger.error(f"Error handling memory overflow: {e}")
     

@@ -64,17 +64,20 @@ class StrategyPlanner:
             dict: Strategic plan
         """
         try:
-            # First try using LLM if available
+            # Generate primary strategy using rule-based system
+            strategy = self._generate_rule_based_strategy(game_state, memory)
+            
+            # Optionally enhance with LLM if available
             if llm:
                 try:
-                    strategy = self._generate_llm_strategy(game_state, memory, llm)
-                    if strategy:
-                        return strategy
+                    llm_strategy = self._generate_llm_strategy(game_state, memory, llm)
+                    if llm_strategy:
+                        # Merge LLM insights with rule-based strategy
+                        strategy['objectives'].extend(llm_strategy.get('objectives', []))
                 except Exception as e:
                     self.logger.error(f"Error generating LLM strategy: {e}")
             
-            # Fall back to rule-based strategy
-            return self._generate_rule_based_strategy(game_state, memory)
+            return strategy
             
         except Exception as e:
             self.logger.error(f"Error developing strategy: {e}")
@@ -183,21 +186,78 @@ What strategic objectives should be pursued? Provide specific, actionable goals.
     def _generate_rule_based_strategy(self, game_state: Dict[str, Any], 
                                     memory: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Generate strategy using rule-based system."""
-        # Check for immediate survival needs
-        if self._needs_survival_focus(game_state):
-            strategy = self.default_strategies['survival']
-        # Check for combat situation
-        elif self._needs_combat_focus(game_state):
-            strategy = self.default_strategies['combat']
-        # Default to exploration
-        else:
-            strategy = self.default_strategies['exploration']
+        objectives = []
+        focus = 'exploration'  # Default focus
         
-        # Add metadata
-        strategy['timestamp'] = datetime.now().isoformat()
-        strategy['source'] = 'rule_based'
+        # Check health status
+        health = game_state.get('player', {}).get('health', 100)
+        if health < 30:
+            objectives.append({
+                'type': 'survival',
+                'goal': 'heal',
+                'priority': 'critical',
+                'details': 'Find food or healing items'
+            })
+            focus = 'survival'
+        elif health < 70:
+            objectives.append({
+                'type': 'survival',
+                'goal': 'heal',
+                'priority': 'high',
+                'details': 'Restore health when convenient'
+            })
         
-        return strategy
+        # Check threats
+        threats = game_state.get('environment', {}).get('threats', [])
+        if threats:
+            immediate_threats = [t for t in threats if t.get('distance', float('inf')) < 20]
+            if immediate_threats:
+                objectives.append({
+                    'type': 'combat',
+                    'goal': 'evade_threat',
+                    'priority': 'critical',
+                    'details': f'Evade {len(immediate_threats)} immediate threats'
+                })
+                focus = 'combat'
+        
+        # Check resources
+        inventory = game_state.get('inventory', {}).get('items', {})
+        if not inventory:
+            objectives.append({
+                'type': 'resource',
+                'goal': 'gather_basic_resources',
+                'priority': 'high',
+                'details': 'Gather wood and stone'
+            })
+            focus = 'resource'
+        
+        # Check opportunities
+        opportunities = game_state.get('environment', {}).get('opportunities', [])
+        if opportunities:
+            nearby_resources = [o for o in opportunities if o.get('distance', float('inf')) < 30]
+            if nearby_resources:
+                objectives.append({
+                    'type': 'resource',
+                    'goal': 'gather_resources',
+                    'priority': 'medium',
+                    'details': f'Gather {len(nearby_resources)} nearby resources'
+                })
+        
+        # Add exploration if no critical objectives
+        if not objectives or all(o['priority'] not in ['critical', 'high'] for o in objectives):
+            objectives.append({
+                'type': 'exploration',
+                'goal': 'explore_area',
+                'priority': 'medium',
+                'details': 'Explore surroundings for resources and opportunities'
+            })
+        
+        return {
+            'objectives': objectives,
+            'focus': focus,
+            'timestamp': datetime.now().isoformat(),
+            'source': 'rule_based'
+        }
     
     def _needs_survival_focus(self, game_state: Dict[str, Any]) -> bool:
         """Check if survival needs attention."""
