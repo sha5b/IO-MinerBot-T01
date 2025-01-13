@@ -137,8 +137,7 @@ class ActionPlanner:
             # Optimize sequence
             actions = self.optimizer.optimize_sequence(
                 actions,
-                game_state,
-                constraints
+                game_state  # Only pass sequence and game_state
             )
             
             # Execute if requested

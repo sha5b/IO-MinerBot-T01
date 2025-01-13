@@ -59,6 +59,23 @@
             "jump": 0.1
         }
     },
+    "action": {
+        "max_sequence_length": 20,
+        "min_duration": 0.1,
+        "max_duration": 5.0,
+        "timeout_multiplier": 2.0,
+        "merge_threshold": 0.1,
+        "split_threshold": 2.0,
+        "categories": ["movement", "combat", "resource", "interaction"],
+        "validation": {
+            "cooldown": 0.1,
+            "timeout": 5.0
+        },
+        "optimization": {
+            "merge_threshold": 0.1,
+            "min_sequence_length": 1
+        }
+    },
     "logging": {
         "console": {
             "level": "INFO",

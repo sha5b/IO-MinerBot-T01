@@ -22,12 +22,15 @@ class ActionExecutor:
     @property {Dict} action_handlers - Registered handlers for different action types
     """
     
-    def __init__(self, state_tracker: StateTracker, action_controller: ActionController):
+    def __init__(self, config: Dict[str, Any], state_tracker: StateTracker, action_controller: ActionController):
         """
         Initialize the ActionExecutor.
         
+        @param {Dict[str, Any]} config - Configuration settings
         @param {StateTracker} state_tracker - System state tracker for updates
+        @param {ActionController} action_controller - Action controller for input execution
         """
+        self.config = config
         self.active_actions = {}  # Track currently executing actions
         self.action_handlers = {}  # Map action types to their handlers
         self.state_tracker = state_tracker
@@ -125,8 +128,9 @@ class ActionExecutor:
         start_time = datetime.fromisoformat(action['data']['timestamp'])
         current_time = datetime.now()
         
-        # Check for timeout
-        if (current_time - start_time).total_seconds() > action['data']['duration'] * 2:
+        # Check for timeout using config
+        timeout_multiplier = self.config.get('action', {}).get('timeout_multiplier', 2.0)
+        if (current_time - start_time).total_seconds() > action['data']['duration'] * timeout_multiplier:
             logger.warning(f"Action {action_id} timed out")
             return True
             

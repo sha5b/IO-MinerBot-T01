@@ -30,10 +30,23 @@ class DecisionEngine:
         self.config = self._load_config(config_path)
         self.ollama = ollama_interface
         
-        # Initialize components
+        # Initialize components with structured config
         self.objective_manager = ObjectiveManager(self.config)
         self.strategy_planner = StrategyPlanner(self.config, self.objective_manager)
         self.situation_analyzer = SituationAnalyzer(self.config)
+        
+        # Create action config with defaults if needed
+        action_config = self.config.get('action', {})
+        if not action_config:
+            self.logger.warning("No action config found, using defaults")
+            action_config = {
+                'max_sequence_length': 20,
+                'min_duration': 0.1,
+                'max_duration': 5.0,
+                'timeout_multiplier': 2.0
+            }
+            self.config['action'] = action_config
+            
         self.action_planner = ActionPlanner(self.config)
         self.reactive_controller = ReactiveController(self.config)
         
@@ -47,7 +60,29 @@ class DecisionEngine:
         try:
             if config_path and Path(config_path).exists():
                 with open(config_path, 'r') as f:
-                    return json.load(f)
+                    full_config = json.load(f)
+                    
+                    # Extract and validate action config
+                    action_config = full_config.get('action', {})
+                    required_fields = [
+                        'max_sequence_length',
+                        'min_duration',
+                        'max_duration',
+                        'timeout_multiplier'
+                    ]
+                    
+                    # Check required fields
+                    for field in required_fields:
+                        if field not in action_config:
+                            self.logger.warning(f"Missing required action setting: {field}")
+                    
+                    # Structure config for components
+                    return {
+                        'action': action_config,
+                        'controls': full_config.get('controls', {}),
+                        'memory': full_config.get('memory', {}),
+                        'vision': full_config.get('vision', {})
+                    }
             return {}
         except Exception as e:
             self.logger.error(f"Error loading config: {e}")
