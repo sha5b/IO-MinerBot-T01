@@ -1,11 +1,22 @@
-torch
-torchvision
-torchaudio
-opencv-python
-ultralytics
-mss
-pynput
-ollama
-pywin32
-requests
-numpy
+# Core Dependencies
+numpy>=1.21.0
+opencv-python>=4.5.0
+mss>=6.1.0
+ultralytics>=8.0.0
+pynput>=1.7.0
+requests>=2.26.0
+
+# Optional Dependencies
+# For visualization and debugging
+matplotlib>=3.4.0
+pillow>=8.0.0
+
+# For development
+pytest>=6.2.0
+black>=21.5b2
+flake8>=3.9.0
+mypy>=0.910
+
+# Note: Some dependencies may require additional system packages:
+# Windows: Microsoft Visual C++ Build Tools
+# Linux: python3-dev, gcc, build-essential
