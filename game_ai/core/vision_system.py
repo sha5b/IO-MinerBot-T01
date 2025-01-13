@@ -1,3 +1,4 @@
+
 """Vision system for capturing and analyzing game screen using OpenCV."""
 
 import cv2
@@ -185,15 +186,15 @@ class VisionSystem:
                 }
             }
 
-            # Combine all data
+            # Structure and filter data for memory storage
             game_state = {
                 'frame_shape': frame.shape,
                 'timestamp': datetime.now().isoformat(),
-                'objects': objects,
-                'features': features,
-                'motion': motion,
-                'structure': structure,
-                'analysis': analysis
+                'objects': self._filter_relevant_objects(objects),
+                'features': self._summarize_features(features),
+                'motion': self._summarize_motion(motion),
+                'structure': self._summarize_structure(structure),
+                'analysis': self._enhance_analysis(analysis)
             }
             
             # Update visualization
@@ -457,6 +458,127 @@ class VisionSystem:
         else:
             raise ValueError(f"Invalid monitor number: {monitor_num}")
             
+    def _filter_relevant_objects(self, objects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter and prioritize relevant objects based on distance and type."""
+        if not objects:
+            return []
+            
+        # Sort objects by distance from player
+        player_pos = next((obj['position'] for obj in objects if obj['type'] == 'player'), None)
+        if player_pos:
+            for obj in objects:
+                if obj['type'] != 'player':
+                    obj['distance'] = self._calculate_distance(obj['position'], player_pos)
+            
+            # Sort non-player objects by distance
+            sorted_objects = [obj for obj in objects if obj['type'] == 'player']
+            sorted_objects.extend(
+                sorted([obj for obj in objects if obj['type'] != 'player'], 
+                      key=lambda x: x.get('distance', float('inf')))
+            )
+            return sorted_objects[:20]  # Limit to 20 most relevant objects
+        return objects[:20]
+
+    def _summarize_features(self, features: Dict[str, Any]) -> Dict[str, Any]:
+        """Summarize feature tracking data."""
+        return {
+            'keypoint_count': len(features.get('keypoints', [])),
+            'match_count': len(features.get('matches', [])),
+            'significant_changes': any(
+                match['distance'] < self.config['vision']['feature_match_threshold'] * 0.5
+                for match in features.get('matches', [])
+            )
+        }
+
+    def _summarize_motion(self, motion: Dict[str, Any]) -> Dict[str, Any]:
+        """Summarize motion detection data."""
+        regions = motion.get('regions', [])
+        return {
+            'magnitude': motion.get('magnitude', 0),
+            'active_regions': len(regions),
+            'significant_motion': motion.get('magnitude', 0) > 0.1
+        }
+
+    def _summarize_structure(self, structure: Dict[str, Any]) -> Dict[str, Any]:
+        """Summarize scene structure data."""
+        lines = structure.get('lines', [])
+        regions = structure.get('regions', [])
+        
+        # Analyze line orientations
+        horizontal_lines = sum(1 for line in lines if abs(line['angle']) < 10 or abs(line['angle']) > 170)
+        vertical_lines = sum(1 for line in lines if abs(line['angle'] - 90) < 10)
+        
+        return {
+            'edge_density': structure.get('edge_density', 0),
+            'line_count': len(lines),
+            'horizontal_lines': horizontal_lines,
+            'vertical_lines': vertical_lines,
+            'region_count': len(regions),
+            'complexity': len(lines) * structure.get('edge_density', 0)
+        }
+
+    def _enhance_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform raw analysis into meaningful tactical summaries."""
+        env = analysis.get('environment', {})
+        player = analysis.get('player', {})
+        
+        # Analyze threats
+        threats = env.get('threats', [])
+        threat_zones = {
+            'immediate': sum(1 for t in threats if t.get('distance', float('inf')) < 100),
+            'close': sum(1 for t in threats if 100 <= t.get('distance', float('inf')) < 300),
+            'distant': sum(1 for t in threats if t.get('distance', float('inf')) >= 300)
+        }
+        
+        # Analyze resources
+        resources = env.get('resources', [])
+        resource_zones = {
+            'nearby': sum(1 for r in resources if r.get('distance', float('inf')) < 150),
+            'reachable': sum(1 for r in resources if 150 <= r.get('distance', float('inf')) < 300)
+        }
+        
+        # Analyze terrain
+        terrain_type = env.get('terrain_type', 'unknown')
+        terrain_advantage = 'neutral'
+        if terrain_type == 'dense':
+            terrain_advantage = 'favorable'  # Good cover
+        elif terrain_type == 'sparse':
+            terrain_advantage = 'unfavorable'  # Exposed
+            
+        # Analyze tactical position
+        position_quality = 'neutral'
+        if threat_zones['immediate'] == 0 and resource_zones['nearby'] > 0:
+            position_quality = 'advantageous'
+        elif threat_zones['immediate'] > 0 or (threat_zones['close'] > 2):
+            position_quality = 'compromised'
+            
+        # Create tactical summary
+        return {
+            'environment': {
+                'terrain_type': terrain_type,
+                'terrain_advantage': terrain_advantage,
+                'threat_assessment': {
+                    'level': 'high' if threat_zones['immediate'] > 1 else 
+                            'medium' if threat_zones['immediate'] > 0 or threat_zones['close'] > 2 else 
+                            'low',
+                    'distribution': threat_zones
+                },
+                'resource_assessment': {
+                    'availability': 'high' if resource_zones['nearby'] > 2 else
+                                  'medium' if resource_zones['nearby'] > 0 or resource_zones['reachable'] > 2 else
+                                  'low',
+                    'distribution': resource_zones
+                }
+            },
+            'tactical_position': {
+                'quality': position_quality,
+                'mobility': 'restricted' if terrain_type == 'dense' else 'unrestricted',
+                'defensibility': 'high' if terrain_type == 'dense' and threat_zones['immediate'] == 0 else
+                               'low' if terrain_type == 'sparse' and threat_zones['immediate'] > 0 else
+                               'medium'
+            }
+        }
+
     def cleanup(self):
         """Clean up resources."""
         if self.visualizer:

@@ -12,12 +12,13 @@ import logging
 class WindowManager:
     """Manages game window focus and mouse input."""
     
-    def __init__(self, window_title: str = "Minecraft"):
+    def __init__(self, window_title: str = "Minecraft*"):
         """
         Initialize window manager.
         
         Args:
-            window_title (str): Title of game window to control
+            window_title (str): Title or pattern of game window to control. 
+                              Use * as wildcard, e.g. "Minecraft*" matches any window starting with Minecraft
         """
         self.logger = logging.getLogger(__name__)
         self.window_title = window_title
@@ -28,9 +29,30 @@ class WindowManager:
         self.active_window = False  # Track if we have an active window
         
     def find_game_window(self) -> bool:
-        """Find game window by title."""
+        """Find game window by title pattern."""
         try:
-            self.game_hwnd = win32gui.FindWindow(None, self.window_title)
+            def enum_window_callback(hwnd, pattern):
+                title = win32gui.GetWindowText(hwnd)
+                if pattern.endswith('*'):
+                    # Handle wildcard matching
+                    if title.startswith(pattern[:-1]):
+                        return hwnd
+                elif title == pattern:
+                    return hwnd
+                return None
+
+            # Find all windows and look for a match
+            def enum_windows_callback(hwnd, ctx):
+                result = enum_window_callback(hwnd, self.window_title)
+                if result:
+                    ctx.append(result)
+                return True
+
+            found_windows = []
+            win32gui.EnumWindows(enum_windows_callback, found_windows)
+            
+            # Use the first matching window
+            self.game_hwnd = found_windows[0] if found_windows else None
             if self.game_hwnd:
                 self.window_rect = win32gui.GetWindowRect(self.game_hwnd)
                 width = self.window_rect[2] - self.window_rect[0]
