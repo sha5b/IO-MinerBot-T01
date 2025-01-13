@@ -163,11 +163,6 @@
             "continuous": true,
             "default_duration": 0.1
         },
-        "look": {
-            "description": "Mouse movement for looking around",
-            "continuous": true,
-            "default_duration": 0.1
-        },
         "action": {
             "description": "Immediate actions like shooting or interacting",
             "continuous": false,

@@ -104,15 +104,7 @@ class ActionController:
             mapped_actions = []
             
             # Map based on action type
-            if action_type == 'look':
-                # Handle look actions directly with mouse movement
-                if key.startswith('look_'):
-                    mapped_actions.extend(self._create_mouse_actions(
-                        key, is_continuous, duration))
-                else:
-                    self.logger.error(f"Invalid look key: {key}")
-                    
-            elif action_type == 'movement':
+            if action_type == 'movement':
                 movement_controls = game_controls.get('keyboard', {}).get('movement', {})
                 self.logger.debug(f"Movement controls: {movement_controls}")
                 
@@ -178,33 +170,14 @@ class ActionController:
                 'duration': duration
             }]
     
-    def _create_mouse_actions(self, action_input: str, continuous: bool, duration: float) -> List[Dict[str, Any]]:
+    def _create_mouse_actions(self, button: str, continuous: bool, duration: float) -> List[Dict[str, Any]]:
         """Create mouse action sequence."""
-        # Handle mouse movement (looking around)
-        if action_input.startswith('look_'):
-            direction = action_input.split('_')[1]  # look_left, look_right, look_up, look_down
-            movement_map = {
-                'left': (-50, 0),
-                'right': (50, 0),
-                'up': (0, -30),
-                'down': (0, 30)
-            }
-            delta_x, delta_y = movement_map.get(direction, (0, 0))
-            return [{
-                'type': 'mouse',
-                'subtype': 'move',
-                'relative': True,
-                'position': (delta_x, delta_y),
-                'duration': duration
-            }]
-        
-        # Handle mouse buttons
         button_map = {
             'mouse1': Button.left,
             'mouse2': Button.right,
             'mouse3': Button.middle
         }
-        mapped_button = button_map.get(action_input, Button.left)
+        mapped_button = button_map.get(button, Button.left)
         
         if continuous:
             return [{
@@ -356,24 +329,7 @@ class ActionController:
         """Execute mouse input."""
         try:
             if action['subtype'] == 'move':
-                if action.get('relative', False):
-                    # Get current position
-                    current_x, current_y = self.mouse.position
-                    delta_x, delta_y = action['position']
-                    
-                    # Apply mouse sensitivity from config
-                    game_controls = self.get_game_controls()
-                    sensitivity = game_controls.get('mouse', {}).get('sensitivity', 1.0)
-                    invert_y = game_controls.get('mouse', {}).get('invert_y', False)
-                    
-                    # Calculate new position with sensitivity
-                    new_x = current_x + (delta_x * sensitivity)
-                    new_y = current_y + (delta_y * sensitivity * (-1 if invert_y else 1))
-                    
-                    # Move mouse
-                    self.mouse.position = (new_x, new_y)
-                else:
-                    self.mouse.position = action['position']
+                self.mouse.position = action['position']
             elif action['subtype'] == 'click':
                 if action['press_type'] == 'click':
                     self.mouse.click(action['button'])
@@ -410,7 +366,7 @@ class ActionController:
                 return False
             
             # Validate type
-            valid_types = ['movement', 'action', 'menu', 'hotbar', 'look']
+            valid_types = ['movement', 'action', 'menu', 'hotbar']
             if action['type'] not in valid_types:
                 self.logger.error(f"Invalid action type: {action['type']}")
                 return False

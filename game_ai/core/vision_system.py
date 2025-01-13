@@ -1,8 +1,9 @@
-"""Vision system for capturing and analyzing game screen using OpenCV."""
+"""Vision system for capturing and analyzing game screen."""
 
 import cv2
 import numpy as np
 from mss import mss
+from ultralytics import YOLO
 from pathlib import Path
 import json
 import logging
@@ -10,10 +11,9 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 from .window_manager import WindowManager
 from .visualizer import Visualizer
-from .ollama_interface import OllamaInterface
 
 class VisionSystem:
-    """Handles all visual input processing and analysis using OpenCV."""
+    """Handles all visual input processing and analysis."""
     
     def __init__(self, config_path: Optional[Path] = None, show_visualization: bool = True):
         """
@@ -25,39 +25,23 @@ class VisionSystem:
         """
         self.logger = logging.getLogger(__name__)
         self.sct = mss()
+        self.model = None
         self.config = self._load_config(config_path)
         self.last_frame = None
         self.window_manager = WindowManager()
         self.visualizer = Visualizer() if show_visualization else None
-        self.llm = OllamaInterface(config_path)
-        
-        # Initialize feature tracking
-        self.feature_detector = cv2.SIFT_create()
-        self.last_keypoints = None
-        self.last_descriptors = None
-        
-        # Initialize motion detection
-        self.last_gray = None
-        self.motion_history = None
-        
-        # Color ranges for different elements
-        self.color_ranges = {
-            'player': [(0, 100, 100), (10, 255, 255)],  # Red-ish
-            'enemy': [(0, 0, 100), (180, 30, 255)],     # Gray/Dark
-            'resource': [(20, 100, 100), (30, 255, 255)],  # Yellow-ish
-            'terrain': [(35, 50, 50), (85, 255, 255)]   # Green-ish
-        }
+        self._initialize_yolo()
         
     def _load_config(self, config_path: Optional[Path]) -> Dict[str, Any]:
         """Load vision system configuration."""
         default_config = {
             'monitor': 1,
-            'window_title': None,
-            'vision': {
-                'motion_threshold': 25,
-                'feature_match_threshold': 0.7,
-                'min_contour_area': 100,
-                'max_contour_area': 10000
+            'window_title': None,  # If set, captures specific window instead of monitor
+            'confidence_threshold': 0.5,
+            'yolo': {
+                'model_path': 'models/yolov8n.pt',
+                'confidence': 0.25,
+                'iou': 0.45
             }
         }
         
@@ -71,6 +55,28 @@ class VisionSystem:
                 return default_config
         return default_config
     
+    def _initialize_yolo(self) -> None:
+        """Initialize YOLO model for object detection."""
+        try:
+            model_path = Path(self.config['yolo']['model_path'])
+            if model_path.exists():
+                # Configure YOLO to suppress debug output
+                import logging
+                logging.getLogger("ultralytics").setLevel(logging.WARNING)
+                
+                # Initialize YOLO with configuration
+                self.model = YOLO(str(model_path))
+                # Configure model parameters
+                self.model.conf = float(self.config['yolo']['confidence'])
+                self.model.iou = float(self.config['yolo']['iou'])
+                # Suppress YOLO output
+                self.model.predictor = None  # Reset predictor to avoid verbose output
+                self.logger.info("YOLO model loaded successfully")
+            else:
+                self.logger.warning(f"YOLO model not found at {model_path}")
+        except Exception as e:
+            self.logger.error(f"Error initializing YOLO: {e}")
+    
     def capture_screen(self) -> np.ndarray:
         """Capture the current game screen."""
         try:
@@ -78,11 +84,13 @@ class VisionSystem:
             if self.config.get('window_title'):
                 if not self.window_manager.active_window or \
                    self.window_manager.get_window_title() != self.config['window_title']:
+                    # Set or update active window
                     if not self.window_manager.set_active_window(self.config['window_title']):
                         self.logger.warning(f"Window '{self.config['window_title']}' not found")
                         return self._capture_monitor()
                 
                 try:
+                    # Try window capture
                     frame = self.window_manager.capture_window()
                     if frame is not None and frame.size > 0:
                         self.last_frame = frame
@@ -100,15 +108,17 @@ class VisionSystem:
     def _capture_monitor(self) -> np.ndarray:
         """Capture monitor screen using mss."""
         try:
+            # Use configured monitor or fall back to primary
             monitor_num = self.config.get('monitor', 1)
             if monitor_num >= len(self.sct.monitors):
-                monitor_num = 1
+                monitor_num = 1  # Fall back to primary monitor
                 
             monitor = self.sct.monitors[monitor_num]
-            screenshot = self.sct.grab(monitor)
-            frame = np.array(screenshot)
-            self.last_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-            return self.last_frame
+            with mss() as sct:  # Create new mss instance to ensure clean capture
+                screenshot = sct.grab(monitor)
+                frame = np.array(screenshot)
+                self.last_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                return self.last_frame
                 
         except Exception as e:
             self.logger.error(f"Monitor capture error: {e}")
@@ -122,229 +132,261 @@ class VisionSystem:
             raise ValueError("No frame available for processing")
             
         try:
-            # Convert to HSV for color detection
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            
-            # Convert to grayscale for feature/motion detection
+            # Basic frame processing
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray, 100, 200)
             
-            # Detect objects by color
-            objects = self._detect_objects_by_color(hsv)
+            # Detect objects first for visualization
+            objects = self.detect_objects(frame)
             
-            # Track features
-            features = self._track_features(gray)
-            
-            # Detect motion
-            motion = self._detect_motion(gray)
-            
-            # Analyze scene structure
-            structure = self._analyze_scene_structure(gray)
-            
-            # Combine all data
+            # Extract game state
             game_state = {
                 'frame_shape': frame.shape,
                 'timestamp': datetime.now().isoformat(),
-                'objects': objects,
-                'features': features,
-                'motion': motion,
-                'structure': structure
+                'player': self._detect_player(frame),
+                'inventory': {
+                    'items': {},  # Will be populated by UI analysis
+                    'capacity': 36,
+                    'low_thresholds': {'wood': 10, 'stone': 10, 'food': 5}
+                },
+                'analysis': {
+                    'player': self._detect_player(frame),
+                    'environment': self._analyze_environment(frame, edges),
+                    'objects': objects,
+                    'ui_elements': self._detect_ui_elements(frame)
+                }
             }
             
-            # Update visualization
+            # Update inventory based on UI analysis
+            ui_elements = self._detect_ui_elements(frame)
+            if ui_elements.get('elements'):
+                # Basic inventory estimation from UI elements
+                game_state['inventory']['items'] = {
+                    'wood': len([e for e in ui_elements['elements'] if e.get('type') == 'wood_item']),
+                    'stone': len([e for e in ui_elements['elements'] if e.get('type') == 'stone_item']),
+                    'food': len([e for e in ui_elements['elements'] if e.get('type') == 'food_item'])
+                }
+            
+            # Update visualization with error handling
             if self.visualizer:
                 try:
-                    self.visualizer.show_frame(
-                        frame,
-                        objects,
-                        current_objective
-                    )
+                    self.visualizer.show_frame(frame, objects, current_objective)
                 except Exception as e:
                     self.logger.error(f"Visualization error: {e}")
             
             return game_state
-            
         except Exception as e:
             self.logger.error(f"Frame processing error: {e}")
             raise
-    
-    def _detect_objects_by_color(self, hsv: np.ndarray) -> List[Dict[str, Any]]:
-        """Detect objects using color ranges."""
-        objects = []
-        
-        for obj_type, (lower, upper) in self.color_ranges.items():
-            # Create mask for this color range
-            mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+
+    def detect_objects(self, frame: np.ndarray) -> List[Dict[str, Any]]:
+        """Detect and classify objects in the frame using YOLO."""
+        if self.model is None:
+            return []
             
-            # Find contours
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            for contour in contours:
-                area = cv2.contourArea(contour)
-                if self.config['vision']['min_contour_area'] < area < self.config['vision']['max_contour_area']:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    center = (x + w//2, y + h//2)
-                    
-                    objects.append({
-                        'type': obj_type,
-                        'position': center,
-                        'size': (w, h),
-                        'area': area,
-                        'bbox': [x, y, x + w, y + h]
-                    })
-        
-        return objects
-    
-    def _track_features(self, gray: np.ndarray) -> Dict[str, Any]:
-        """Track distinctive features between frames."""
         try:
-            # Detect keypoints
-            keypoints, descriptors = self.feature_detector.detectAndCompute(gray, None)
-            
-            if self.last_keypoints is None or self.last_descriptors is None:
-                self.last_keypoints = keypoints
-                self.last_descriptors = descriptors
-                return {'keypoints': [], 'matches': []}
-            
-            # Match features with previous frame
-            if len(keypoints) > 0 and len(self.last_keypoints) > 0 and \
-               descriptors is not None and self.last_descriptors is not None:
-                
-                matcher = cv2.BFMatcher()
-                matches = matcher.knnMatch(self.last_descriptors, descriptors, k=2)
-                
-                # Apply ratio test
-                good_matches = []
-                for m, n in matches:
-                    if m.distance < self.config['vision']['feature_match_threshold'] * n.distance:
-                        good_matches.append({
-                            'queryIdx': m.queryIdx,
-                            'trainIdx': m.trainIdx,
-                            'distance': float(m.distance)
-                        })
-                
-                # Update last frame data
-                self.last_keypoints = keypoints
-                self.last_descriptors = descriptors
-                
-                return {
-                    'keypoints': [
-                        {'x': kp.pt[0], 'y': kp.pt[1], 'size': kp.size, 'angle': kp.angle}
-                        for kp in keypoints
-                    ],
-                    'matches': good_matches
-                }
-            
-            return {'keypoints': [], 'matches': []}
-            
-        except Exception as e:
-            self.logger.error(f"Feature tracking error: {e}")
-            return {'keypoints': [], 'matches': []}
-    
-    def _detect_motion(self, gray: np.ndarray) -> Dict[str, Any]:
-        """Detect motion between frames."""
-        try:
-            if self.last_gray is None:
-                self.last_gray = gray
-                return {'regions': [], 'magnitude': 0}
-            
-            # Calculate frame difference
-            frame_diff = cv2.absdiff(self.last_gray, gray)
-            
-            # Threshold to get motion mask
-            _, motion_mask = cv2.threshold(
-                frame_diff,
-                self.config['vision']['motion_threshold'],
-                255,
-                cv2.THRESH_BINARY
+            results = self.model(
+                frame,
+                conf=self.config['yolo']['confidence'],
+                iou=self.config['yolo']['iou']
             )
             
-            # Find motion regions
-            contours, _ = cv2.findContours(motion_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            detections = []
+            for result in results:
+                for box in result.boxes:
+                    obj = {
+                        'class': result.names[int(box.cls[0].item())],
+                        'confidence': float(box.conf[0].item()),
+                        'bbox': [float(x.item()) for x in box.xyxy[0]],
+                        'center': self._calculate_center([float(x.item()) for x in box.xyxy[0]])
+                    }
+                    detections.append(obj)
             
-            motion_regions = []
-            total_motion = 0
+            return detections
+        except Exception as e:
+            self.logger.error(f"Object detection error: {e}")
+            return []
+
+    def _detect_player(self, frame: np.ndarray) -> Dict[str, Any]:
+        """Detect player position and state."""
+        if self.model:
+            results = self.detect_objects(frame)
+            for obj in results:
+                if obj['class'] == 'person':  # Assuming player is detected as person
+                    return {
+                        'detected': True,
+                        'position': obj['center'],
+                        'confidence': obj['confidence'],
+                        'bbox': obj['bbox']
+                    }
+        
+        return {
+            'detected': False,
+            'position': None,
+            'confidence': 0.0,
+            'bbox': None
+        }
+    
+    def _analyze_environment(self, frame: np.ndarray, edges: np.ndarray) -> Dict[str, Any]:
+        """Analyze the game environment."""
+        try:
+            # Convert to HSV for color analysis
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             
-            for contour in contours:
-                area = cv2.contourArea(contour)
-                if area > self.config['vision']['min_contour_area']:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    motion_regions.append({
-                        'position': (x + w//2, y + h//2),
+            # Analyze colors for terrain understanding
+            color_ranges = {
+                'grass': ([35, 50, 50], [85, 255, 255]),
+                'water': ([90, 50, 50], [130, 255, 255]),
+                'stone': ([0, 0, 30], [180, 30, 150]),
+                'wood': ([10, 50, 50], [30, 255, 255])
+            }
+            
+            # Detect terrain types
+            terrain_analysis = {}
+            for terrain, (lower, upper) in color_ranges.items():
+                mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+                coverage = np.count_nonzero(mask) / (frame.shape[0] * frame.shape[1])
+                terrain_analysis[terrain] = coverage
+            
+            # Detect objects using YOLO
+            objects = self.detect_objects(frame)
+            
+            # Categorize detected objects
+            threats = []
+            resources = []
+            passive_mobs = []
+            
+            for obj in objects:
+                if obj['class'] in ['zombie', 'skeleton', 'creeper']:
+                    threats.append({
+                        'type': obj['class'],
+                        'position': obj['center'],
+                        'distance': self._calculate_distance(obj['center'], (frame.shape[1]/2, frame.shape[0]/2))
+                    })
+                elif obj['class'] in ['tree', 'stone']:
+                    resources.append({
+                        'type': obj['class'],
+                        'position': obj['center'],
+                        'distance': self._calculate_distance(obj['center'], (frame.shape[1]/2, frame.shape[0]/2))
+                    })
+                elif obj['class'] in ['cow', 'pig', 'sheep']:
+                    passive_mobs.append({
+                        'type': obj['class'],
+                        'position': obj['center'],
+                        'distance': self._calculate_distance(obj['center'], (frame.shape[1]/2, frame.shape[0]/2))
+                    })
+            
+            # Analyze lighting conditions
+            lighting = self._analyze_lighting(frame)
+            
+            # Structure environment data according to game rules
+            return {
+                'terrain_type': max(terrain_analysis.items(), key=lambda x: x[1])[0],
+                'terrain_analysis': terrain_analysis,
+                'threats': threats,
+                'resources': resources,
+                'passive_mobs': passive_mobs,
+                'lighting_conditions': lighting,
+                'edge_density': np.count_nonzero(edges) / (edges.shape[0] * edges.shape[1]),
+                'obstacles': self._detect_obstacles(edges),
+                'time_of_day': self._estimate_time_of_day(lighting['brightness'])
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Environment analysis error: {e}")
+            # Return safe default structure
+            return {
+                'terrain_type': 'unknown',
+                'terrain_analysis': {},
+                'threats': [],
+                'resources': [],
+                'passive_mobs': [],
+                'lighting_conditions': {'brightness': 0.0, 'contrast': 0.0, 'saturation': 0.0},
+                'edge_density': 0.0,
+                'obstacles': [],
+                'time_of_day': 'day'
+            }
+            
+    def _calculate_distance(self, point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
+        """Calculate Euclidean distance between two points."""
+        return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
+        
+    def _detect_obstacles(self, edges: np.ndarray) -> List[Dict[str, Any]]:
+        """Detect obstacles from edge detection."""
+        obstacles = []
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 500:  # Filter small contours
+                x, y, w, h = cv2.boundingRect(contour)
+                obstacles.append({
+                    'position': (x + w/2, y + h/2),
+                    'size': (w, h),
+                    'area': area
+                })
+        
+        return obstacles
+        
+    def _estimate_time_of_day(self, brightness: float) -> str:
+        """Estimate time of day based on brightness."""
+        if brightness > 150:
+            return 'day'
+        elif brightness > 100:
+            return 'dusk'
+        else:
+            return 'night'
+    
+    def _analyze_lighting(self, frame: np.ndarray) -> Dict[str, float]:
+        """Analyze scene lighting conditions."""
+        try:
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            brightness = np.mean(hsv[:, :, 2])
+            contrast = np.std(hsv[:, :, 2])
+            saturation = np.mean(hsv[:, :, 1])
+            
+            return {
+                'brightness': float(brightness),
+                'contrast': float(contrast),
+                'saturation': float(saturation)
+            }
+        except Exception as e:
+            self.logger.error(f"Lighting analysis error: {e}")
+            return {
+                'brightness': 0.0,
+                'contrast': 0.0,
+                'saturation': 0.0
+            }
+    
+    def _calculate_center(self, bbox: List[float]) -> Tuple[float, float]:
+        """Calculate center point of a bounding box."""
+        x1, y1, x2, y2 = bbox
+        return ((x1 + x2) / 2, (y1 + y2) / 2)
+
+    def _detect_ui_elements(self, frame: np.ndarray) -> Dict[str, Any]:
+        """Detect and analyze UI elements."""
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 150)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        ui_elements = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 100:  # Filter small contours
+                x, y, w, h = cv2.boundingRect(contour)
+                if w/h > 0.1 and w/h < 10:  # Filter extreme aspect ratios
+                    ui_elements.append({
+                        'type': 'unknown',
+                        'position': (x, y),
                         'size': (w, h),
                         'area': area
                     })
-                    total_motion += area
-            
-            # Update last frame
-            self.last_gray = gray
-            
-            return {
-                'regions': motion_regions,
-                'magnitude': total_motion / (gray.shape[0] * gray.shape[1])
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Motion detection error: {e}")
-            return {'regions': [], 'magnitude': 0}
-    
-    def _analyze_scene_structure(self, gray: np.ndarray) -> Dict[str, Any]:
-        """Analyze overall scene structure."""
-        try:
-            # Edge detection
-            edges = cv2.Canny(gray, 100, 200)
-            
-            # Line detection
-            lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, minLineLength=100, maxLineGap=10)
-            
-            detected_lines = []
-            if lines is not None:
-                for line in lines:
-                    x1, y1, x2, y2 = line[0]
-                    angle = np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi
-                    length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-                    
-                    detected_lines.append({
-                        'start': (int(x1), int(y1)),
-                        'end': (int(x2), int(y2)),
-                        'angle': float(angle),
-                        'length': float(length)
-                    })
-            
-            # Analyze regions
-            regions = []
-            height, width = gray.shape
-            grid_size = 3
-            
-            cell_h = height // grid_size
-            cell_w = width // grid_size
-            
-            for y in range(grid_size):
-                for x in range(grid_size):
-                    region = gray[y*cell_h:(y+1)*cell_h, x*cell_w:(x+1)*cell_w]
-                    
-                    # Calculate region features
-                    mean_intensity = np.mean(region)
-                    std_intensity = np.std(region)
-                    
-                    regions.append({
-                        'position': (x * cell_w + cell_w//2, y * cell_h + cell_h//2),
-                        'size': (cell_w, cell_h),
-                        'intensity': {
-                            'mean': float(mean_intensity),
-                            'std': float(std_intensity)
-                        }
-                    })
-            
-            return {
-                'lines': detected_lines,
-                'regions': regions,
-                'edge_density': np.count_nonzero(edges) / (edges.shape[0] * edges.shape[1])
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Scene structure analysis error: {e}")
-            return {'lines': [], 'regions': [], 'edge_density': 0}
-    
+        
+        return {
+            'elements': ui_elements,
+            'count': len(ui_elements)
+        }
+
     def get_available_windows(self) -> List[str]:
         """Get list of available window titles."""
         return self.window_manager.get_window_list()
@@ -360,7 +402,7 @@ class VisionSystem:
         """Set monitor to capture."""
         if 0 <= monitor_num < len(self.sct.monitors):
             self.config['monitor'] = monitor_num
-            self.config['window_title'] = None
+            self.config['window_title'] = None  # Clear window capture
         else:
             raise ValueError(f"Invalid monitor number: {monitor_num}")
             
@@ -368,4 +410,3 @@ class VisionSystem:
         """Clean up resources."""
         if self.visualizer:
             self.visualizer.cleanup()
-        self.llm.cleanup()
